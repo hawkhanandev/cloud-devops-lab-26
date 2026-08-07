@@ -1,0 +1,11 @@
+{
+  "name": "student-expenses-tracker",
+  "version": "1.0.0",
+  "description": "Root workspace - run scripts from here to start client or server",
+  "scripts": {
+    "server": "cd server && npm run dev",
+    "install:server": "cd server && npm install",
+    "setup": "cd server && npm install"
+  },
+  "private": true
+}
