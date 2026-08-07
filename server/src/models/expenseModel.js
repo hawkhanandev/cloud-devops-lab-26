@@ -1,8 +1,6 @@
 const pool = require('../config/db');
 
-// ──────────────────────────────────────────
-//  Get ALL expenses  (newest first)
-// ──────────────────────────────────────────
+// ── Get ALL expenses (newest first) ────────────────────
 const getAllExpenses = async () => {
   const result = await pool.query(
     'SELECT * FROM expenses ORDER BY date DESC, id DESC'
@@ -10,9 +8,7 @@ const getAllExpenses = async () => {
   return result.rows;
 };
 
-// ──────────────────────────────────────────
-//  Get a SINGLE expense by ID
-// ──────────────────────────────────────────
+// ── Get a SINGLE expense by ID ──────────────────────────
 const getExpenseById = async (id) => {
   const result = await pool.query(
     'SELECT * FROM expenses WHERE id = $1',
@@ -21,9 +17,7 @@ const getExpenseById = async (id) => {
   return result.rows[0];
 };
 
-// ──────────────────────────────────────────
-//  Create a NEW expense
-// ──────────────────────────────────────────
+// ── Create a NEW expense ────────────────────────────────
 const createExpense = async ({ title, amount, category, date, note }) => {
   const result = await pool.query(
     `INSERT INTO expenses (title, amount, category, date, note)
@@ -34,9 +28,7 @@ const createExpense = async ({ title, amount, category, date, note }) => {
   return result.rows[0];
 };
 
-// ──────────────────────────────────────────
-//  Update an EXISTING expense
-// ──────────────────────────────────────────
+// ── Update an EXISTING expense ──────────────────────────
 const updateExpense = async (id, { title, amount, category, date, note }) => {
   const result = await pool.query(
     `UPDATE expenses
@@ -48,9 +40,7 @@ const updateExpense = async (id, { title, amount, category, date, note }) => {
   return result.rows[0];
 };
 
-// ──────────────────────────────────────────
-//  Delete an expense
-// ──────────────────────────────────────────
+// ── Delete an expense ───────────────────────────────────
 const deleteExpense = async (id) => {
   const result = await pool.query(
     'DELETE FROM expenses WHERE id = $1 RETURNING *',
@@ -59,9 +49,7 @@ const deleteExpense = async (id) => {
   return result.rows[0];
 };
 
-// ──────────────────────────────────────────
-//  Get total spending & breakdown by category
-// ──────────────────────────────────────────
+// ── Spending summary by category ────────────────────────
 const getSummary = async () => {
   const total = await pool.query('SELECT SUM(amount) AS total FROM expenses');
   const byCategory = await pool.query(

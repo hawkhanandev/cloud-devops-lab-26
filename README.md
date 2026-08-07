@@ -1,48 +1,61 @@
-# Student Expenses Tracker
+# 💰 Student Expenses Tracker
 
 A simple personal full-stack expenses tracker for students.
-Built with Node.js + Express + PostgreSQL on the backend and plain HTML/CSS/JS on the frontend.
+**React + Vite** · **Node.js + Express** · **PostgreSQL**
 
 ---
 
-## Folder Structure
+## 📁 Folder Structure
 
 ```
 student-expenses-tracker/
 │
-├── client/                        # Frontend (HTML + CSS + JS)
-│   ├── index.html                 # Main UI page
-│   ├── css/
-│   │   └── style.css              # All styles (dark theme)
-│   └── js/
-│       └── app.js                 # Fetches API, renders UI
-│
-├── server/                        # Backend (Node.js + Express + PostgreSQL)
-│   ├── db/
-│   │   └── init.sql               # Creates expenses table + seed data
+├── client/                          # Frontend — React + Vite
 │   ├── src/
-│   │   ├── config/
-│   │   │   └── db.js              # PostgreSQL connection pool
-│   │   ├── controllers/
-│   │   │   └── expenseController.js  # Request / response logic
-│   │   ├── models/
-│   │   │   └── expenseModel.js    # Raw SQL queries (CRUD + summary)
-│   │   └── routes/
-│   │       └── expenseRoutes.js   # URL routing
-│   ├── .env.example               # Environment variable template
-│   ├── package.json
-│   └── server.js                  # Express entry point
+│   │   ├── api/
+│   │   │   └── expenses.js          # All API fetch calls
+│   │   ├── components/
+│   │   │   ├── Header.jsx
+│   │   │   ├── SummaryCards.jsx
+│   │   │   ├── ExpenseForm.jsx
+│   │   │   ├── ExpenseList.jsx
+│   │   │   ├── ExpenseItem.jsx
+│   │   │   ├── EditModal.jsx
+│   │   │   └── Toast.jsx
+│   │   ├── App.jsx
+│   │   └── index.css
+│   ├── vite.config.js               # Proxies /expenses → port 3000
+│   └── package.json
 │
-├── package.json                   # Root scripts
-├── .gitignore
-└── README.md
+└── server/                          # Backend — Node.js + Express
+    ├── db/
+    │   └── init.sql                 # Creates table + seeds sample data
+    ├── src/
+    │   ├── config/
+    │   │   └── db.js                # PostgreSQL connection pool
+    │   ├── controllers/
+    │   │   └── expenseController.js
+    │   ├── models/
+    │   │   └── expenseModel.js      # SQL queries
+    │   └── routes/
+    │       └── expenseRoutes.js
+    ├── .env.example
+    ├── package.json
+    └── server.js
 ```
 
 ---
 
-## Getting Started
+## ⚙️ Setup
 
-### 1. Set up your .env file
+### 1. PostgreSQL — Create the database
+
+```bash
+psql -U your_username -c "CREATE DATABASE expenses_tracker;"
+psql -U your_username -d expenses_tracker -f server/db/init.sql
+```
+
+### 2. Environment variables
 
 ```bash
 cp server/.env.example server/.env
@@ -53,58 +66,56 @@ Open `server/.env` and fill in your credentials:
 ```
 DB_HOST=localhost
 DB_PORT=5432
-DB_USER=your_postgres_username
-DB_PASSWORD=your_postgres_password
+DB_USER=your_username
+DB_PASSWORD=your_password
 DB_NAME=expenses_tracker
 PORT=3000
 ```
 
-### 2. Create the PostgreSQL database
+### 3. Install dependencies
 
 ```bash
-psql -U your_postgres_username -c "CREATE DATABASE expenses_tracker;"
-```
-
-### 3. Run the SQL init script (creates table + seeds sample data)
-
-```bash
-psql -U your_postgres_username -d expenses_tracker -f server/db/init.sql
-```
-
-### 4. Install server dependencies
-
-```bash
+# Backend
 cd server && npm install
+
+# Frontend
+cd client && npm install
 ```
 
-### 5. Start the server
+---
+
+## 🚀 Running the App
+
+Open two terminals:
 
 ```bash
-# From the server/ directory:
-npm run dev        # Development (auto-restarts)
-npm start          # Production
+# Terminal 1 — Backend (port 3000)
+cd server
+node server.js
+
+# Terminal 2 — Frontend (port 5173)
+cd client
+npm run dev
 ```
 
-Open your browser at: http://localhost:3000
-The server also serves the frontend from the client/ folder automatically.
+Open **http://localhost:5173** in your browser.
 
 ---
 
-## API Endpoints
+## 📡 API Endpoints
 
-| Method | Endpoint          | Description                         |
-|--------|-------------------|-------------------------------------|
-| GET    | /api              | API info and available routes       |
-| GET    | /expenses         | Get all expenses (newest first)     |
-| GET    | /expenses/summary | Total spent + breakdown by category |
-| GET    | /expenses/:id     | Get a single expense by ID          |
-| POST   | /expenses         | Add a new expense                   |
-| PUT    | /expenses/:id     | Update an existing expense          |
-| DELETE | /expenses/:id     | Delete an expense                   |
+| Method | Endpoint           | Description                         |
+|--------|--------------------|-------------------------------------|
+| GET    | /expenses          | Get all expenses (newest first)     |
+| GET    | /expenses/summary  | Total spent + breakdown by category |
+| GET    | /expenses/:id      | Get a single expense by ID          |
+| POST   | /expenses          | Add a new expense                   |
+| PUT    | /expenses/:id      | Update an existing expense          |
+| DELETE | /expenses/:id      | Delete an expense                   |
 
 ---
 
-## Request Body (POST / PUT)
+## 📦 Request Body (POST / PUT)
 
 ```json
 {
@@ -116,22 +127,21 @@ The server also serves the frontend from the client/ folder automatically.
 }
 ```
 
-| Field    | Required | Default      | Example values              |
-|----------|----------|--------------|-----------------------------|
-| title    | Yes      | -            | "Bus fare"                  |
-| amount   | Yes      | -            | 12.50                       |
-| category | No       | General      | Food, Transport, Books      |
-| date     | No       | Today        | 2026-08-07                  |
-| note     | No       | null         | "Weekly shop"               |
+| Field    | Required | Default  | Example                    |
+|----------|----------|----------|----------------------------|
+| title    | Yes      | —        | "Bus fare"                 |
+| amount   | Yes      | —        | 12.50                      |
+| category | No       | General  | Food, Transport, Books     |
+| date     | No       | Today    | 2026-08-07                 |
+| note     | No       | null     | "Weekly shop"              |
 
 ---
 
-## Tech Stack
+## 🛠 Tech Stack
 
 | Layer     | Technology          |
 |-----------|---------------------|
-| Frontend  | HTML / CSS / JS     |
+| Frontend  | React 18 + Vite     |
 | Backend   | Node.js + Express   |
 | Database  | PostgreSQL          |
 | DB Driver | node-postgres (pg)  |
-| Dev Tool  | nodemon             |
