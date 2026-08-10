@@ -20,7 +20,8 @@ resource "aws_instance" "ec2-app" {
   subnet_id = aws_subnet.private.id
   vpc_security_group_ids = [aws_security_group.app.id]
   associate_public_ip_address = false
-
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+  key_name = aws_key_pair.general_key_pair.key_name
 
   tags = {
     Name = "ec2-app-server"
@@ -28,3 +29,8 @@ resource "aws_instance" "ec2-app" {
 
 
 }
+resource "aws_key_pair" "general_key_pair" {
+
+  key_name = "general_key_pair"
+  public_key = file("/home/hawkhanan/Downloads/cloud_devops_keypair_26.pub")
+} 

@@ -33,13 +33,3 @@ variable "availability_zone" {
   type = string
   default = "us-east-1a"
 }
-
-variable "key_pair_name" {
-  description = "devopslab_accessKeys.csv"
-  type = string
-}
-
-variable "my_ip" {
-  description = "72.255.28.18"
-  type = string
-}
