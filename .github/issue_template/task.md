@@ -1,10 +1,19 @@
+---
+name: Task
+about: Create a task
+title: "[TASK] "
+labels: ""
+assignees: ""
+---
+
 ## Task
 
-**Task**
-<!-- What needs to be done? -->
+**What needs to be done?**
 
-**Goal**
-<!-- What should be achieved? -->
+## Description
 
-**Done when**
-<!-- When is this task complete? -->
+Describe the task.
+
+## Expected result
+
+What should be completed?

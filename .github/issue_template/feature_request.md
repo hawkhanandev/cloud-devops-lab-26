@@ -1,10 +1,19 @@
-## Feature Request
+---
+name: Feature Request
+about: Suggest an idea or improvement
+title: "[FEATURE] "
+labels: enhancement
+assignees: ""
+---
 
-**Feature**
-<!-- What feature do you want? -->
+## Feature Description
 
-**Why?**
-<!-- Why is it needed? -->
+**What feature would you like to see?**
 
-**Expected result**
-<!-- What should happen? -->
+## Why is this feature useful?
+
+**Explain the problem this feature would solve.**
+
+## Additional information
+
+Add any other information here.
