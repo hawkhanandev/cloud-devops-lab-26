@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: expenses_tracker
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d expenses_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: ${DOCKERHUB_USER}/expenses-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: expenses_tracker
+      PORT: 3000
+    networks:
+      - app_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    image: ${DOCKERHUB_USER}/expenses-client:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - app_network
+    depends_on:
+      - server
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

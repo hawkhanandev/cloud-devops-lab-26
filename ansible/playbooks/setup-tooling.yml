@@ -1,0 +1,36 @@
+---
+- name: Deploy Jenkins to EC2
+  hosts: app_nodes
+  become: true
+
+  vars:
+    tooling_dir: /opt/tooling
+
+  tasks:
+    - name: Create tooling directory
+      ansible.builtin.file:
+        path: "{{ tooling_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy docker-compose.tooling.yml
+      ansible.builtin.copy:
+        src: ../../app/docker-compose.tooling.yml
+        dest: "{{ tooling_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Add ubuntu user to docker group
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Start Jenkins
+      community.docker.docker_compose_v2:
+        project_src: "{{ tooling_dir }}"
+        state: present
+        pull: always

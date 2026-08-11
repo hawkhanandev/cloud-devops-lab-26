@@ -1,0 +1,58 @@
+---
+- name: Deploy Expenses Tracker App to EC2
+  hosts: app_nodes
+  become: true
+
+  vars:
+    app_dir: /opt/expenses-tracker
+    env_file: "{{ app_dir }}/.env"
+
+  tasks:
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy production docker-compose file
+      ansible.builtin.copy:
+        src: ../../app/docker-compose.prod.yml
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Copy database init SQL
+      ansible.builtin.copy:
+        src: ../../app/server/db/init.sql
+        dest: "{{ app_dir }}/init.sql"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Write .env file from vault variables
+      ansible.builtin.template:
+        src: ../templates/app.env.j2
+        dest: "{{ env_file }}"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Add ubuntu user to docker group
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Pull latest images from DockerHub
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        pull: always
+        state: present
+      environment:
+        DB_USER: "{{ vault_db_user }}"
+        DB_PASSWORD: "{{ vault_db_password }}"
+        DOCKERHUB_USER: "{{ vault_docker_hub_username }}"
+        IMAGE_TAG: "{{ image_tag | default('latest') }}"

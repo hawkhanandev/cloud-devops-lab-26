@@ -2,26 +2,26 @@
   "app_private_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "10.0.2.188"
+    "value": "10.0.2.59"
   },
   "bastion_public_ip": {
     "sensitive": false,
     "type": "string",
-    "value": "100.48.205.89"
+    "value": "44.222.143.249"
   },
   "private_subnet_id": {
     "sensitive": false,
     "type": "string",
-    "value": "subnet-01777b58ff58a8df7"
+    "value": "subnet-0fe85d0740a457816"
   },
   "public_subnet_id": {
     "sensitive": false,
     "type": "string",
-    "value": "subnet-0fa23adb8f96f8629"
+    "value": "subnet-0b385804d4455988c"
   },
   "vpc_id": {
     "sensitive": false,
     "type": "string",
-    "value": "vpc-06f7ae8c2a6aee691"
+    "value": "vpc-0f6d8643ac15c7329"
   }
 }

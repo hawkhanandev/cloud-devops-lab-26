@@ -1,6 +1,6 @@
 ---
 - name: OS Security Hardening & Base Configuration
-  hosts: all
+  hosts: app_nodes
   become: true
   vars_files:
     - ../group_vars/all/main.yml
