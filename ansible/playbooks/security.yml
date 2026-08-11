@@ -1,0 +1,79 @@
+---
+- name: OS Security Hardening & Base Configuration
+  hosts: all
+  become: true
+  vars_files:
+    - ../group_vars/all/main.yml
+    - ../group_vars/all/vault.yml
+
+  tasks:
+    - name: Update apt cache and upgrade packages
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install fundamental system tools
+      ansible.builtin.apt:
+        name:
+          - curl
+          - git
+          - htop
+          - ufw
+          - fail2ban
+          - python3-pip
+        state: present
+
+    - name: Create administrative devops user
+      ansible.builtin.user:
+        name: "{{ create_user }}"
+        password: "{{ vault_devops_password }}"
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+        state: present
+
+    - name: Allow devops user passwordless sudo access
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers.d/devops
+        line: "{{ create_user }} ALL=(ALL) NOPASSWD:ALL"
+        create: yes
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Set up SSH authorized keys for devops user
+      ansible.builtin.authorized_key:
+        user: "{{ create_user }}"
+        key: "{{ lookup('file', '/home/hawkhanan/Downloads/cloud_devops_keypair_26.pub') }}"
+        state: present
+
+    - name: Set UFW default deny inbound policy
+      community.general.ufw:
+        policy: deny
+        direction: incoming
+
+    - name: Configure UFW firewall rules
+      community.general.ufw:
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.protocol }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ ufw_allowed_ports }}"
+
+    - name: Enable UFW firewall service
+      community.general.ufw:
+        state: enabled
+
+    - name: Harden SSH configuration (Disable Root Login)
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitRootLogin"
+        line: "PermitRootLogin no"
+        state: present
+      notify: Restart SSH Service
+
+  handlers:
+    - name: Restart SSH Service
+      ansible.builtin.service:
+        name: ssh
+        state: restarted

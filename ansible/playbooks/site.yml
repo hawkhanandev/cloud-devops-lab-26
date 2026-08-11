@@ -1,0 +1,6 @@
+---
+- name: Execute OS Security Hardening
+  import_playbook: security.yml
+
+- name: Execute Docker Runtime Provisioning
+  import_playbook: docker.yml
