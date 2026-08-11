@@ -289,21 +289,6 @@ flowchart LR
 
 ---
 
-## Troubleshooting & Resolution Audit Log
-
-| Error / Issue | Root Cause | Technical Resolution |
-| :--- | :--- | :--- |
-| **Direct Push Rejection on `main`** | Branch protection rules enabled on `main`. | Reset local commit (`git reset --soft HEAD~1`), pushed to `dev`, and merged via Pull Request. |
-| **`terraform init` Backend Failure** | S3 bucket and DynamoDB table did not exist prior to init. | Manually bootstrapped S3 state bucket and DynamoDB table on AWS before running `terraform init`. |
-| **Uncommitted Local State Cache** | Terraform generated local state files before remote S3 sync finalized. | Added `*.tfstate` to `.gitignore` and purged cached files using `git rm --cached terraform/terraform.tfstate`. |
-| **Redirect Output `No such file or directory`** | Shell redirection (`>`) cannot auto-create missing parent directory paths. | Executed `mkdir -p ../ansible/inventory` prior to running `terraform output -json > ...`. |
-| **Redirect Output `Not a directory`** | File named `inventory` previously existed at path where folder `inventory/` was expected. | Deleted file using `rm ../ansible/inventory` and created folder using `mkdir -p ../ansible/inventory`. |
-| **Ansible Terminal Lockup during UFW task** | UFW default deny policy was enabled before SSH port allowance rules were added. | Reordered playbook tasks to allow TCP Port 22 *before* enforcing default deny policy and enabling UFW. |
-| **`docker-ce` Package Not Found** | APT cache was not refreshed immediately after adding new Docker deb822 repository. | Added `update_cache: yes` to APT repository task and de-armored GPG key into binary `.gpg` format. |
-| **Ansible Vault Authentication Failure** | Vault-encrypted variables file was included without providing the decryption password. | Added `--ask-vault-pass` flag to `ansible-playbook` execution command. |
-
----
-
 ## Verification & Validation Commands
 
 Run these commands to verify that the environment and automation layers are fully operational:
@@ -315,7 +300,7 @@ Run these commands to verify that the environment and automation layers are full
    ```
 2. **Verify SSH Tunneling through Bastion to Private App Host**:
    ```bash
-   ssh -J ubuntu@44.193.198.228 ubuntu@10.0.2.78
+   ssh -J ubuntu@Public_IP_Bastion_Host ubuntu@Private_IP_App_Server
    ```
 3. **Verify Ansible Connectivity across All Nodes**:
    ```bash
@@ -324,7 +309,7 @@ Run these commands to verify that the environment and automation layers are full
    ```
 4. **Verify Administrative `devops` User & Sudo Privileges**:
    ```bash
-   ssh -J ubuntu@44.193.198.228 devops@10.0.2.78 "sudo ufw status verbose"
+   ssh -J ubuntu@Public_IP_Bastion_Host devops@Private_IP_App_Server "sudo ufw status verbose"
    ```
 5. **Verify Docker & Docker Compose Plugin on Private App Host**:
    ```bash
