@@ -4,11 +4,11 @@ resource "aws_security_group" "bastion" {
   vpc_id = aws_vpc.labvpc.id
 
   ingress {
-    description = "SSH from admin IP"
+    description = "SSH from my IP only"
     from_port = 22
     to_port = 22
     protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["139.135.55.206/32"]
   }
 
   egress {
