@@ -1,0 +1,119 @@
+---
+- name: Install Docker Engine & Provision Containers
+  hosts: app_nodes
+  become: true
+  vars:
+    container_count: 4
+    default_container_name: docker
+    default_container_image: ubuntu
+    default_container_command: sleep 1d
+    dummy_test_image: hello-world
+    docker_apt_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' if ansible_architecture == 'aarch64' else ansible_architecture }}"
+
+  tasks:
+    # 1. Install aptitude so Ansible can manage packages reliably
+    - name: Install aptitude
+      ansible.builtin.apt:
+        name: aptitude
+        state: present
+        update_cache: yes
+
+    # 2. Install required system dependencies
+    - name: Install required system packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+          - gnupg
+        state: present
+        update_cache: yes
+
+    # 3. Setup Docker Keyring Directory
+    - name: Create directory for Docker APT keyring
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    # 4. Download Official Docker GPG key
+    - name: Download Docker official GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /tmp/docker.gpg.key
+        mode: '0644'
+
+    # 5. De-armor GPG Key to binary format (/etc/apt/keyrings/docker.gpg)
+    - name: De-armor Docker GPG key
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.key
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Set permissions on de-armored key
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.gpg
+        mode: '0644'
+
+    # 6. Add Official Docker APT Repository (deb822 format)
+    - name: Add Docker APT repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: stable
+        architectures: "{{ docker_apt_arch }}"
+        signed_by: /etc/apt/keyrings/docker.gpg
+        state: present
+
+    # 7. Update APT cache and install Docker CE & Compose Plugin
+    - name: Update apt and install Docker Engine and Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    # 8. Ensure Docker service is active
+    - name: Ensure Docker service is enabled and started
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # 9. Install Python Docker SDK so Ansible community.docker modules function
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name:
+          - docker
+          - docker-compose
+        state: present
+
+    # 10. Pull a dummy test image (hello-world) directly from Docker Hub
+    - name: Pull test dummy image (hello-world)
+      community.docker.docker_image:
+        name: "{{ dummy_test_image }}"
+        source: pull
+
+    # 11. Pull default container image (ubuntu)
+    - name: Pull default Docker image
+      community.docker.docker_image:
+        name: "{{ default_container_image }}"
+        source: pull
+
+    # 12. Create containers using the pulled image, looped by container_count
+    - name: Create default containers
+      community.docker.docker_container:
+        name: "{{ default_container_name }}{{ item }}"
+        image: "{{ default_container_image }}"
+        command: "{{ default_container_command }}"
+        state: present
+      loop: "{{ range(1, container_count + 1) | list }}"

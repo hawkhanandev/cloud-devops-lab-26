@@ -1,0 +1,19 @@
+---
+create_user: "devops"
+ssh_port: 22
+
+ufw_allowed_ports:
+  - { port: 22, protocol: "tcp", rule: "allow", comment: "SSH" }
+  - { port: 80, protocol: "tcp", rule: "allow", comment: "HTTP" }
+  - { port: 443, protocol: "tcp", rule: "allow", comment: "HTTPS" }
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+docker_python_packages:
+  - docker
+  - docker-compose
