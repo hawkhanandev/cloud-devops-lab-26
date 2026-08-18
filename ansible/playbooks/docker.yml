@@ -2,12 +2,9 @@
 - name: Install Docker Engine & Provision Containers
   hosts: app_nodes
   become: true
+  vars_files:
+    - ../group_vars/all/main.yml
   vars:
-    container_count: 4
-    default_container_name: docker
-    default_container_image: ubuntu
-    default_container_command: sleep 1d
-    dummy_test_image: hello-world
     docker_apt_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' if ansible_architecture == 'aarch64' else ansible_architecture }}"
 
   tasks:
@@ -73,12 +70,7 @@
     # 7. Update APT cache and install Docker CE & Compose Plugin
     - name: Update apt and install Docker Engine and Compose plugin
       ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
+        name: "{{ docker_packages }}"
         state: present
         update_cache: yes
 
@@ -92,28 +84,5 @@
     # 9. Install Python Docker SDK so Ansible community.docker modules function
     - name: Install Docker Module for Python
       ansible.builtin.pip:
-        name:
-          - docker
-          - docker-compose
+        name: "{{ docker_python_packages }}"
         state: present
-
-    # 10. Pull a dummy test image (hello-world) directly from Docker Hub
-    - name: Pull test dummy image (hello-world)
-      community.docker.docker_image:
-        name: "{{ dummy_test_image }}"
-        source: pull
-
-    # 11. Pull default container image (ubuntu)
-    - name: Pull default Docker image
-      community.docker.docker_image:
-        name: "{{ default_container_image }}"
-        source: pull
-
-    # 12. Create containers using the pulled image, looped by container_count
-    - name: Create default containers
-      community.docker.docker_container:
-        name: "{{ default_container_name }}{{ item }}"
-        image: "{{ default_container_image }}"
-        command: "{{ default_container_command }}"
-        state: present
-      loop: "{{ range(1, container_count + 1) | list }}"
