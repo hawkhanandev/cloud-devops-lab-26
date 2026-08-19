@@ -1,37 +1,13 @@
-data "aws_ami" "bastion" {
-  most_recent = true
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  owners = ["099720109477"] # Canonical
-}
+# Bastion EC2 — public AZ1
 
 resource "aws_instance" "bastion" {
-  ami           = data.aws_ami.bastion.id
-  instance_type = "t3.micro"
-  subnet_id = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.bastion.id]
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.public_az1.id
+  vpc_security_group_ids      = [aws_security_group.bastion.id]
   associate_public_ip_address = true
-  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
-  key_name = aws_key_pair.general_key_pair_1.key_name
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  key_name                    = aws_key_pair.lab_key.key_name
 
-  tags = {
-    Name = "bastion-devops-lab"
-  }
-
-
+  tags = { Name = "cloud-devops-lab-bastion" }
 }
-
-resource "aws_key_pair" "general_key_pair_1" {
-
-  key_name = "general_key_pair_1"
-  public_key = file("/home/hawkhanan/Downloads/cloud_devops_keypair_26.pub")
-} 
