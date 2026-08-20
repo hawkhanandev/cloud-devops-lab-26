@@ -9,21 +9,3 @@
   import_playbook: docker.yml
   vars:
     target_hosts: app_nodes
-
-# Jenkins EC2 — security hardening only (Jenkins installed natively)
-- name: Security harden Jenkins EC2
-  import_playbook: security.yml
-  vars:
-    target_hosts: jenkins_nodes
-
-# SonarQube EC2 — security hardening only (SonarQube installed natively)
-- name: Security harden SonarQube EC2
-  import_playbook: security.yml
-  vars:
-    target_hosts: sonarqube_nodes
-
-# Observability EC2 — security hardening only (Prometheus/Grafana installed natively)
-- name: Security harden Observability EC2
-  import_playbook: security.yml
-  vars:
-    target_hosts: observability_nodes
