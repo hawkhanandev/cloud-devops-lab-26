@@ -80,7 +80,7 @@ pipeline {
 
                     withCredentials([
                         string(
-                            credentialsId: 'sonarqube-token',
+                            credentialsId: 'Jenkins-Token',
                             variable: 'SONAR_TOKEN'
                         )
                     ]) {
