@@ -29,12 +29,12 @@ pipeline {
                     fi
 
                     if [ -f server/package.json ]; then
-                        cd server
+                        cd "$WORKSPACE/server"
                         npm install
                     fi
 
                     if [ -f client/package.json ]; then
-                        cd client
+                        cd "$WORKSPACE/client"
                         npm install
                     fi
                 '''
@@ -55,14 +55,14 @@ pipeline {
                         npm test -- --passWithNoTests
                     fi
 
-                    if [ -f server/package.json ]; then
-                        cd server
-                        npm test -- --passWithNoTests || true
+                    if [ -f "$WORKSPACE/server/package.json" ]; then
+                        cd "$WORKSPACE/server"
+                        npm test -- --passWithNoTests
                     fi
 
-                    if [ -f client/package.json ]; then
-                        cd client
-                        npm test -- --passWithNoTests || true
+                    if [ -f "$WORKSPACE/client/package.json" ]; then
+                        cd "$WORKSPACE/client"
+                        npm test -- --passWithNoTests
                     fi
                 '''
             }
@@ -78,15 +78,20 @@ pipeline {
 
                 withSonarQubeEnv('SonarQube') {
 
-                    sh '''
-                        echo "Running SonarQube analysis..."
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonarqube-token',
+                            variable: 'SONAR_TOKEN'
+                        )
+                    ]) {
 
-                        sonar-scanner \
-                          -Dsonar.projectKey=cloud-devops-app \
-                          -Dsonar.projectName=Cloud-DevOps-App \
-                          -Dsonar.sources=. \
-                          -Dsonar.exclusions=node_modules/**,client/node_modules/**,server/node_modules/**,coverage/**,dist/**,build/**
-                    '''
+                        sh '''
+                            echo "Running SonarQube analysis..."
+
+                            sonar-scanner \
+                              -Dsonar.token="$SONAR_TOKEN"
+                        '''
+                    }
                 }
             }
         }
