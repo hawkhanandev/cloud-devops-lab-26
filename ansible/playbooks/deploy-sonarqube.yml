@@ -1,0 +1,225 @@
+---
+- name: Deploy SonarQube Natively on SonarQube EC2
+  hosts: sonarqube_nodes
+  become: true
+
+  vars:
+    sonar_version: "10.6.0.92116"
+    sonar_install_dir: /opt/sonarqube
+
+  vars_files:
+    - ../group_vars/all/vault.yml
+
+  tasks:
+    # ── Memory (Swap file for t2.micro) ──────────────────────────
+    - name: Check if swap exists
+      ansible.builtin.command: swapon --show
+      register: swap_status
+      changed_when: false
+
+    - name: Create 2GB swap file
+      ansible.builtin.command: fallocate -l 2G /swapfile
+      when: swap_status.stdout == ""
+      
+    - name: Set swap file permissions
+      ansible.builtin.file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: '0600'
+      when: swap_status.stdout == ""
+
+    - name: Format swap file
+      ansible.builtin.command: mkswap /swapfile
+      when: swap_status.stdout == ""
+
+    - name: Enable swap file
+      ansible.builtin.command: swapon /swapfile
+      when: swap_status.stdout == ""
+
+    - name: Persist swap file in fstab
+      ansible.posix.mount:
+        name: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        passno: 0
+        dump: 0
+        state: present
+
+    # ── Kernel requirements (mandatory) ──────────────────────────
+    - name: Set vm.max_map_count for SonarQube
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: '524288'
+        state: present
+        reload: yes
+
+    - name: Set fs.file-max for SonarQube
+      ansible.posix.sysctl:
+        name: fs.file-max
+        value: '131072'
+        state: present
+        reload: yes
+
+    - name: Persist kernel settings
+      ansible.builtin.blockinfile:
+        path: /etc/sysctl.conf
+        block: |
+          vm.max_map_count=524288
+          fs.file-max=131072
+
+    - name: Set ulimits for sonar user
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.conf
+        block: |
+          sonar   soft    nofile  131072
+          sonar   hard    nofile  131072
+          sonar   soft    nproc   8192
+          sonar   hard    nproc   8192
+
+    # ── Java 17 ───────────────────────────────────────────────────
+    - name: Install Java 17
+      ansible.builtin.apt:
+        name: openjdk-17-jdk
+        state: present
+        update_cache: yes
+
+    # ── PostgreSQL (SonarQube's database) ────────────────────────
+    - name: Install PostgreSQL
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3-psycopg2
+        state: present
+
+    - name: Ensure PostgreSQL is started and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create sonar PostgreSQL user
+      community.postgresql.postgresql_user:
+        name: sonar
+        password: "{{ vault_sonar_db_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Create sonarqube PostgreSQL database
+      community.postgresql.postgresql_db:
+        name: sonarqube
+        owner: sonar
+        state: present
+      become_user: postgres
+
+    # ── SonarQube system user ─────────────────────────────────────
+    - name: Create sonar system user
+      ansible.builtin.user:
+        name: sonar
+        system: yes
+        shell: /bin/false
+        home: /var/sonarqube
+        create_home: yes
+
+    # ── Install SonarQube ─────────────────────────────────────────
+    - name: Install unzip
+      ansible.builtin.apt:
+        name: unzip
+        state: present
+
+    - name: Download SonarQube Community Edition
+      ansible.builtin.get_url:
+        url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{ sonar_version }}.zip"
+        dest: "/tmp/sonarqube-{{ sonar_version }}.zip"
+        mode: '0644'
+
+    - name: Extract SonarQube to /opt
+      ansible.builtin.unarchive:
+        src: "/tmp/sonarqube-{{ sonar_version }}.zip"
+        dest: /opt/
+        remote_src: yes
+        creates: "/opt/sonarqube-{{ sonar_version }}"
+
+    - name: Create symlink /opt/sonarqube
+      ansible.builtin.file:
+        src: "/opt/sonarqube-{{ sonar_version }}"
+        dest: "{{ sonar_install_dir }}"
+        state: link
+
+    - name: Set ownership of SonarQube files
+      ansible.builtin.file:
+        path: "/opt/sonarqube-{{ sonar_version }}"
+        owner: sonar
+        group: sonar
+        recurse: yes
+
+    # ── Configure SonarQube ───────────────────────────────────────
+    - name: Configure sonar.properties (database + web)
+      ansible.builtin.lineinfile:
+        path: "{{ sonar_install_dir }}/conf/sonar.properties"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^#?sonar.jdbc.username=', line: 'sonar.jdbc.username=sonar' }
+        - { regexp: '^#?sonar.jdbc.password=', line: 'sonar.jdbc.password={{ vault_sonar_db_password }}' }
+        - { regexp: '^#?sonar.jdbc.url=',      line: 'sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube' }
+        - { regexp: '^#?sonar.web.host=',      line: 'sonar.web.host=0.0.0.0' }
+        - { regexp: '^#?sonar.web.port=',      line: 'sonar.web.port=9000' }
+      notify: Restart SonarQube
+
+    # ── Systemd service ───────────────────────────────────────────
+    - name: Create SonarQube systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/sonarqube.service
+        content: |
+          [Unit]
+          Description=SonarQube service
+          After=syslog.target network.target postgresql.service
+
+          [Service]
+          Type=forking
+          User=sonar
+          Group=sonar
+          ExecStart={{ sonar_install_dir }}/bin/linux-x86-64/sonar.sh start
+          ExecStop={{ sonar_install_dir }}/bin/linux-x86-64/sonar.sh stop
+          ExecReload={{ sonar_install_dir }}/bin/linux-x86-64/sonar.sh restart
+          LimitNOFILE=131072
+          LimitNPROC=8192
+          TimeoutStartSec=5
+          Restart=always
+          SuccessExitStatus=143
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start SonarQube
+      ansible.builtin.service:
+        name: sonarqube
+        state: started
+        enabled: yes
+
+    # ── Node Exporter ─────────────────────────────────────────────
+    - name: Install Node Exporter
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Ensure Node Exporter is started and enabled
+      ansible.builtin.service:
+        name: prometheus-node-exporter
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart SonarQube
+      ansible.builtin.service:
+        name: sonarqube
+        state: restarted
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes

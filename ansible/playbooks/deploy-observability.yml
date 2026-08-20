@@ -1,0 +1,259 @@
+---
+- name: Deploy Prometheus + Grafana + Alertmanager + Node Exporter (Natively)
+  hosts: observability_nodes
+  become: true
+
+  vars:
+    prometheus_version: "2.54.0"
+    alertmanager_version: "0.27.0"
+    prometheus_dir: /etc/prometheus
+    prometheus_data_dir: /var/lib/prometheus
+
+  vars_files:
+    - ../group_vars/all/vault.yml
+    - ../group_vars/all/main.yml
+
+  tasks:
+    # ─────────────────────────────────────────────────────────────
+    # PROMETHEUS
+    # ─────────────────────────────────────────────────────────────
+    - name: Create prometheus system user
+      ansible.builtin.user:
+        name: prometheus
+        system: yes
+        shell: /bin/false
+        create_home: no
+
+    - name: Create Prometheus directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: prometheus
+        group: prometheus
+        mode: '0755'
+      loop:
+        - "{{ prometheus_dir }}"
+        - "{{ prometheus_dir }}/rules"
+        - "{{ prometheus_data_dir }}"
+
+    - name: Download Prometheus
+      ansible.builtin.get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+        mode: '0644'
+
+    - name: Extract Prometheus
+      ansible.builtin.unarchive:
+        src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+        dest: /tmp/
+        remote_src: yes
+        creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+
+    - name: Copy Prometheus binaries to /usr/local/bin
+      ansible.builtin.copy:
+        src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        remote_src: yes
+        mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - prometheus
+        - promtool
+
+    - name: Write prometheus.yml from template
+      ansible.builtin.template:
+        src: ../templates/prometheus.yml.j2
+        dest: "{{ prometheus_dir }}/prometheus.yml"
+        owner: prometheus
+        group: prometheus
+        mode: '0644'
+      notify: Restart Prometheus
+
+    - name: Copy alert rules
+      ansible.builtin.copy:
+        src: ../../docker/observability/prometheus/rules/alerts.yml
+        dest: "{{ prometheus_dir }}/rules/alerts.yml"
+        owner: prometheus
+        group: prometheus
+        mode: '0644'
+      notify: Restart Prometheus
+
+    - name: Create Prometheus systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=prometheus
+          Group=prometheus
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file={{ prometheus_dir }}/prometheus.yml \
+            --storage.tsdb.path={{ prometheus_data_dir }} \
+            --storage.tsdb.retention.time=15d \
+            --web.enable-lifecycle
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start Prometheus
+      ansible.builtin.service:
+        name: prometheus
+        state: started
+        enabled: yes
+
+    # ─────────────────────────────────────────────────────────────
+    # ALERTMANAGER
+    # ─────────────────────────────────────────────────────────────
+    - name: Create alertmanager system user
+      ansible.builtin.user:
+        name: alertmanager
+        system: yes
+        shell: /bin/false
+        create_home: no
+
+    - name: Create Alertmanager directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: alertmanager
+        group: alertmanager
+        mode: '0755'
+      loop:
+        - /etc/alertmanager
+        - /var/lib/alertmanager
+
+    - name: Download Alertmanager
+      ansible.builtin.get_url:
+        url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/alertmanager-{{ alertmanager_version }}.tar.gz"
+        mode: '0644'
+
+    - name: Extract Alertmanager
+      ansible.builtin.unarchive:
+        src: "/tmp/alertmanager-{{ alertmanager_version }}.tar.gz"
+        dest: /tmp/
+        remote_src: yes
+        creates: "/tmp/alertmanager-{{ alertmanager_version }}.linux-amd64"
+
+    - name: Copy Alertmanager binary
+      ansible.builtin.copy:
+        src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-amd64/alertmanager"
+        dest: /usr/local/bin/alertmanager
+        remote_src: yes
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Write alertmanager.yml from template
+      ansible.builtin.template:
+        src: ../templates/alertmanager.yml.j2
+        dest: /etc/alertmanager/alertmanager.yml
+        owner: alertmanager
+        group: alertmanager
+        mode: '0600'
+      notify: Restart Alertmanager
+
+    - name: Create Alertmanager systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/alertmanager.service
+        content: |
+          [Unit]
+          Description=Alertmanager
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=alertmanager
+          Group=alertmanager
+          ExecStart=/usr/local/bin/alertmanager \
+            --config.file=/etc/alertmanager/alertmanager.yml \
+            --storage.path=/var/lib/alertmanager
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start Alertmanager
+      ansible.builtin.service:
+        name: alertmanager
+        state: started
+        enabled: yes
+
+    # ─────────────────────────────────────────────────────────────
+    # GRAFANA
+    # ─────────────────────────────────────────────────────────────
+    - name: Install Grafana APT dependencies
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - software-properties-common
+          - wget
+        state: present
+
+    - name: Add Grafana GPG key
+      ansible.builtin.get_url:
+        url: https://apt.grafana.com/gpg.key
+        dest: /tmp/grafana.gpg.key
+        mode: '0644'
+
+    - name: Add Grafana GPG key to keyring
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /usr/share/keyrings/grafana.gpg /tmp/grafana.gpg.key
+        creates: /usr/share/keyrings/grafana.gpg
+
+    - name: Add Grafana APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+        state: present
+        filename: grafana
+
+    - name: Install Grafana
+      ansible.builtin.apt:
+        name: grafana
+        state: present
+        update_cache: yes
+
+    - name: Enable and start Grafana
+      ansible.builtin.service:
+        name: grafana-server
+        state: started
+        enabled: yes
+
+    # ─────────────────────────────────────────────────────────────
+    # NODE EXPORTER (on Observability EC2 itself)
+    # ─────────────────────────────────────────────────────────────
+    - name: Install Node Exporter
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Ensure Node Exporter is started and enabled
+      ansible.builtin.service:
+        name: prometheus-node-exporter
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart Prometheus
+      ansible.builtin.service:
+        name: prometheus
+        state: restarted
+
+    - name: Restart Alertmanager
+      ansible.builtin.service:
+        name: alertmanager
+        state: restarted
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
