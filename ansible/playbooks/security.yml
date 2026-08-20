@@ -52,13 +52,19 @@
         policy: deny
         direction: incoming
 
-    - name: Configure UFW firewall rules
+    - name: Configure UFW firewall rules (public ports)
       community.general.ufw:
         rule: "{{ item.rule }}"
         port: "{{ item.port }}"
         proto: "{{ item.protocol }}"
         comment: "{{ item.comment }}"
       loop: "{{ ufw_allowed_ports }}"
+
+    - name: Allow internal VPC traffic
+      community.general.ufw:
+        rule: allow
+        src: 10.0.0.0/16
+        comment: "Allow all internal VPC traffic"
 
     - name: Enable UFW firewall service
       community.general.ufw:
