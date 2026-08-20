@@ -2,9 +2,14 @@
 create_user: "devops"
 ssh_port: 22
 
+app_private_ip: "10.0.2.228"
+jenkins_private_ip: "10.0.2.13"
+sonarqube_private_ip: "10.0.2.58"
+observability_private_ip: "10.0.2.22"
+
 ufw_allowed_ports:
-  - { port: 22, protocol: "tcp", rule: "allow", comment: "SSH" }
-  - { port: 80, protocol: "tcp", rule: "allow", comment: "HTTP" }
+  - { port: 22,  protocol: "tcp", rule: "allow", comment: "SSH" }
+  - { port: 80,  protocol: "tcp", rule: "allow", comment: "HTTP" }
   - { port: 443, protocol: "tcp", rule: "allow", comment: "HTTPS" }
 
 docker_packages:

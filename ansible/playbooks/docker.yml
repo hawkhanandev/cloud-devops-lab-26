@@ -1,6 +1,6 @@
 ---
 - name: Install Docker Engine & Provision Containers
-  hosts: app_nodes
+  hosts: "{{ target_hosts | default('app_nodes') }}"
   become: true
   vars_files:
     - ../group_vars/all/main.yml

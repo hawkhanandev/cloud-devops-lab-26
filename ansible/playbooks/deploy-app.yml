@@ -1,0 +1,116 @@
+---
+- name: Deploy Expenses Tracker App + Configure Host Nginx
+  hosts: app_nodes
+  become: true
+
+  vars:
+    app_dir: /opt/expenses-tracker
+
+  vars_files:
+    - ../group_vars/all/vault.yml
+
+  tasks:
+    # ── App directory and files ───────────────────────────────────
+    - name: Create app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy production docker-compose
+      ansible.builtin.copy:
+        src: ../../docker/app/docker-compose.yml
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Copy database init SQL
+      ansible.builtin.copy:
+        src: ../../app/server/db/init.sql
+        dest: "{{ app_dir }}/init.sql"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Write .env from vault
+      ansible.builtin.template:
+        src: ../templates/app.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Add ubuntu to docker group
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Pull and start app containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        pull: always
+        state: present
+      environment:
+        DB_USER: "{{ vault_db_user }}"
+        DB_PASSWORD: "{{ vault_db_password }}"
+        DOCKERHUB_USER: "{{ vault_docker_hub_username }}"
+        IMAGE_TAG: "{{ image_tag | default('latest') }}"
+
+    # ── Host Nginx (entry point for ALB traffic) ──────────────────
+    - name: Install Nginx on App EC2
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Remove default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Write app Nginx config from template
+      ansible.builtin.template:
+        src: ../templates/app-nginx.conf.j2
+        dest: /etc/nginx/sites-available/app
+        mode: '0644'
+      notify: Reload Nginx
+
+    - name: Enable app Nginx site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/app
+        dest: /etc/nginx/sites-enabled/app
+        state: link
+      notify: Reload Nginx
+
+    - name: Ensure Nginx is started and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    # ── Node Exporter (Prometheus scrapes this) ───────────────────
+    - name: Install Node Exporter
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Ensure Node Exporter is started and enabled
+      ansible.builtin.service:
+        name: prometheus-node-exporter
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Reload Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart Node Exporter
+      ansible.builtin.service:
+        name: prometheus-node-exporter
+        state: restarted

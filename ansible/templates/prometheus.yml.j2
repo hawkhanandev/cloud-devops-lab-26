@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: node_app
+    static_configs:
+      - targets: ['{{ app_private_ip }}:9100']
+
+  - job_name: jenkins
+    metrics_path: /prometheus
+    static_configs:
+      - targets: ['{{ jenkins_private_ip }}:8080']
+
+  - job_name: node_jenkins
+    static_configs:
+      - targets: ['{{ jenkins_private_ip }}:9100']
+
+  - job_name: node_sonarqube
+    static_configs:
+      - targets: ['{{ sonarqube_private_ip }}:9100']
+
+  - job_name: node_observability
+    static_configs:
+      - targets: ['localhost:9100']
