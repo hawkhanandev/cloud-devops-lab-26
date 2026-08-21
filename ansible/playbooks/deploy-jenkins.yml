@@ -289,11 +289,13 @@
     # 9. ANSIBLE (Jenkins pipeline uses ansible-playbook to deploy)
     # ============================================================
 
-    - name: Install Ansible and pip
+    - name: Install Ansible, Node.js, npm, and pip
       ansible.builtin.apt:
         name:
           - ansible
           - python3-pip
+          - nodejs
+          - npm
         state: present
 
     - name: Install community.docker Ansible collection

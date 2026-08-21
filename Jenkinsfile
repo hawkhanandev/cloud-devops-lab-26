@@ -17,9 +17,8 @@ pipeline {
         timestamps()
     }
 
-    // Automatically check GitHub every 2 minutes for new pushes on dev branch
     triggers {
-        pollSCM('H/2 * * * *')
+        pollSCM('* * * * *')
     }
 
     stages {
@@ -66,13 +65,13 @@ pipeline {
                     if [ -f "$WORKSPACE/app/server/package.json" ]; then
                         echo "Testing server..."
                         cd "$WORKSPACE/app/server"
-                        npm test -- --passWithNoTests
+                        npm test --if-present
                     fi
 
                     if [ -f "$WORKSPACE/app/client/package.json" ]; then
                         echo "Testing client..."
                         cd "$WORKSPACE/app/client"
-                        npm test -- --passWithNoTests
+                        npm test --if-present
                     fi
                 '''
             }
@@ -172,8 +171,10 @@ pipeline {
                         ansible-playbook \
                             -i ansible/inventory/hosts.ini \
                             ansible/playbooks/deploy-app.yml \
+                            -u "${SSH_USER}" \
                             --vault-password-file "${VAULT_PASS_FILE}" \
-                            -e "image_tag=${IMAGE_TAG}"
+                            -e "image_tag=${IMAGE_TAG}" \
+                            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
                     '''
                 }
             }
