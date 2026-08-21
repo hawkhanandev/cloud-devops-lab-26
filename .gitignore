@@ -1,0 +1,55 @@
+# ── OS & Editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Node.js ──────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ── Build Outputs ─────────────────────────────────────────────
+dist/
+build/
+.next/
+
+# ── Environment / Secrets ─────────────────────────────────────
+# Never commit real .env files — only .env.example is safe
+.env
+.env.local
+.env.*.local
+app/server/.env
+app/client/.env
+
+# ── Ansible Secrets ───────────────────────────────────────────
+# Vault password files (used with --vault-password-file)
+ansible/.vault_pass
+ansible/.vault_pass.txt
+*.vault_pass
+
+# Terraform state and local config — NEVER commit these
+# (state is stored in S3 backend instead)
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+
+# ── SSH Keys ──────────────────────────────────────────────────
+*.pem
+*.key
+*.ppk
+
+# ── Docker ────────────────────────────────────────────────────
+.dockerignore
+
+# ── Logs ──────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Coverage / Test Outputs ───────────────────────────────────
+coverage/
+.nyc_output/
