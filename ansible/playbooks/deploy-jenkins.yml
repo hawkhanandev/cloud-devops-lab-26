@@ -286,6 +286,35 @@
 
 
     # ============================================================
+    # 9. ANSIBLE (Jenkins pipeline uses ansible-playbook to deploy)
+    # ============================================================
+
+    - name: Install Ansible and pip
+      ansible.builtin.apt:
+        name:
+          - ansible
+          - python3-pip
+        state: present
+
+    - name: Install community.docker Ansible collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.docker
+      become: false
+      become_user: jenkins
+      changed_when: false
+
+    - name: Verify Ansible
+      ansible.builtin.command:
+        cmd: ansible --version
+      register: ansible_version_output
+      changed_when: false
+
+    - name: Display Ansible version
+      ansible.builtin.debug:
+        msg: "{{ ansible_version_output.stdout_lines[0] }}"
+
+
+    # ============================================================
     # 9. FINAL JENKINS VERIFICATION
     # ============================================================
 
