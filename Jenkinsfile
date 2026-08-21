@@ -17,9 +17,8 @@ pipeline {
         timestamps()
     }
 
-    // Automatically check GitHub every 2 minutes for new pushes on dev branch
     triggers {
-        pollSCM('H/2 * * * *')
+        pollSCM('* * * * *')
     }
 
     stages {
