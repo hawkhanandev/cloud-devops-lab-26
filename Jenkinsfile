@@ -173,7 +173,8 @@ pipeline {
                             -i ansible/inventory/hosts.ini \
                             ansible/playbooks/deploy-app.yml \
                             --vault-password-file "${VAULT_PASS_FILE}" \
-                            -e "image_tag=${IMAGE_TAG}"
+                            -e "image_tag=${IMAGE_TAG}" \
+                            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
                     '''
                 }
             }
