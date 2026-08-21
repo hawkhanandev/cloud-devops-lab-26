@@ -1,319 +1,657 @@
-# Cloud DevOps Production Infrastructure & Configuration Management
+# Cloud DevOps Lab 26 — Expenses Tracker
 
-This repository contains the complete Infrastructure as Code (IaC) and Configuration Management automation for a two-tier AWS cloud environment hosting containerized microservices. The architecture incorporates remote S3 state storage with DynamoDB state locking, SSH tunneling via a Bastion host, security group chaining, OS security hardening, user provisioning, UFW firewall configuration, and Docker runtime installation.
+> A production-grade AWS deployment of a full-stack expenses tracking application, built with a complete DevOps pipeline: Infrastructure as Code, Configuration Management, CI/CD, Code Quality, Containerisation, and Observability.
+
+[![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform)](https://www.terraform.io/)
+[![Ansible](https://img.shields.io/badge/Config-Ansible-EE0000?logo=ansible)](https://www.ansible.com/)
+[![Jenkins](https://img.shields.io/badge/CI%2FCD-Jenkins-D24939?logo=jenkins)](https://www.jenkins.io/)
+[![SonarQube](https://img.shields.io/badge/Quality-SonarQube-4E9BCD?logo=sonarqube)](https://www.sonarqube.org/)
+[![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)](https://www.docker.com/)
+[![AWS](https://img.shields.io/badge/Cloud-AWS-FF9900?logo=amazonaws)](https://aws.amazon.com/)
 
 ---
 
 ## Table of Contents
-1. [Architecture Overview](#architecture-overview)
-2. [Architectural & Process Diagrams](#architectural--process-diagrams)
-3. [Directory Structure](#directory-structure)
-4. [Phase-by-Phase Implementation Breakdown](#phase-by-phase-implementation-breakdown)
-   - [Phase 1: Git & Project Setup](#phase-1-git--project-setup)
-   - [Phase 2: Infrastructure as Code (Terraform)](#phase-2-infrastructure-as-code-terraform)
-   - [Phase 3: Configuration Management & Security (Ansible)](#phase-3-configuration-management--security-ansible)
-5. [Troubleshooting & Resolution Audit Log](#troubleshooting--resolution-audit-log)
-6. [Verification & Validation Commands](#verification--validation-commands)
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [Technology Stack](#2-technology-stack)
+3. [Traffic Flow](#3-traffic-flow)
+4. [CI/CD Pipeline](#4-cicd-pipeline)
+5. [Monitoring Architecture](#5-monitoring-architecture)
+6. [Project Structure](#6-project-structure)
+7. [Prerequisites](#7-prerequisites)
+8. [Phase 1 — Infrastructure with Terraform](#8-phase-1--infrastructure-with-terraform)
+9. [Phase 2 — SSH Access via Bastion](#9-phase-2--ssh-access-via-bastion)
+10. [Phase 3 — Server Configuration with Ansible](#10-phase-3--server-configuration-with-ansible)
+11. [Phase 4 — Configure Jenkins](#11-phase-4--configure-jenkins)
+12. [Phase 5 — Configure SonarQube](#12-phase-5--configure-sonarqube)
+13. [Phase 6 — First Deployment](#13-phase-6--first-deployment)
+14. [Phase 7 — Full CI/CD Pipeline](#14-phase-7--full-cicd-pipeline)
+15. [Accessing Services](#15-accessing-services)
+16. [Secrets Management](#16-secrets-management)
 
 ---
 
-## Architecture Overview
+## 1. Architecture Overview
 
-The system provisions an isolated Virtual Private Cloud (VPC) across public and private subnets:
+The infrastructure is deployed on AWS inside a custom VPC. All application workloads run in a **private subnet** with no direct internet access. A **Bastion host** in the public subnet provides secure administrative SSH access. An **Application Load Balancer (ALB)** in the public subnet routes user traffic to the application.
 
-* **VPC (`10.0.0.0/16`)**: Isolated network environment with DNS hostnames and DNS resolution enabled.
-* **Public Subnet (`10.0.1.0/24`)**: Hosts an Internet Gateway (IGW), an Elastic IP-backed NAT Gateway, and a public **Bastion Host** (`t3.micro`).
-* **Private Subnet (`10.0.2.0/24`)**: Holds the **Application Host** (`t3.small`) with no direct public IP. Outbound internet connectivity for OS updates and Docker package downloads is routed through the NAT Gateway.
-* **Security Group Chaining**: Restricts administrative SSH access (Port 22) on the Application Server to accept traffic exclusively originating from the Bastion Security Group (`bastion_sg.id`).
-
-```text
-                                [ Internet / Admin ]
-                                         │
-                                   ( Port 22 SSH )
-                                         ▼
-                   ┌───────────────────────────────────────────┐
-                   │  VPC (10.0.0.0/16)                        │
-                   │                                           │
-                   │   ┌───────────────────────────────────┐   │
-                   │   │ Public Subnet (10.0.1.0/24)       │   │
-                   │   │                                   │   │
-                   │   │   ┌───────────────────────────┐   │   │
-                   │   │   │ Bastion Host (t3.micro)   │   │   │
-                   │   │   │ Public IP: 44.193.198.228 │   │   │
-                   │   │   └─────────────┬─────────────┘   │   │
-                   │   │                 │                 │   │
-                   │   │          [ NAT Gateway ]          │   │
-                   │   └─────────────────┼─────────────────┘   │
-                   │                     │                     │
-                   │   ┌─────────────────┼─────────────────┐   │
-                   │   │ Private Subnet  ▼ (10.0.2.0/24)  │   │
-                   │   │                                   │   │
-                   │   │   ┌───────────────────────────┐   │   │
-                   │   │   │ Application Host          │   │   │
-                   │   │   │ Private IP: 10.0.2.78     │   │   │
-                   │   │   └───────────────────────────┘   │   │
-                   │   └───────────────────────────────────┘   │
-                   └───────────────────────────────────────────┘
-```
-
----
-
-## Architectural & Process Diagrams
-
-### 1. High-Level System Architecture & Network Topology
 ```mermaid
 flowchart TB
-    subgraph Internet ["Public Internet / Developer Laptop"]
-        Dev["DevOps Engineer / Admin"]
+    subgraph Internet["Public Internet"]
+        User["👤 End User"]
+        Admin["🛠 DevOps Engineer"]
     end
 
-    subgraph AWS ["AWS Cloud (us-east-1)"]
-        subgraph VPC ["VPC (10.0.0.0/16)"]
-            IGW["Internet Gateway (IGW)"]
-            
-            subgraph PublicSubnet ["Public Subnet (10.0.1.0/24)"]
-                Bastion["Bastion Host (t3.micro)
-Public IP: 44.193.198.228"]
-                NAT["NAT Gateway + Elastic IP"]
-                BastionSG["Bastion Security Group
-Inbound: TCP 22 (0.0.0.0/0)"]
+    subgraph AWS["AWS Cloud — us-east-1"]
+        subgraph VPC["VPC (10.0.0.0/16)"]
+
+            subgraph PublicSubnet["Public Subnet"]
+                ALB["Application Load Balancer\n(Port 80 — Public)"]
+                Bastion["Bastion Host\n(SSH Jump Server)"]
+                NAT["NAT Gateway"]
             end
-            
-            subgraph PrivateSubnet ["Private Subnet (10.0.2.0/24)"]
-                AppServer["Application Host (t3.small)
-Private IP: 10.0.2.78"]
-                AppSG["App Security Group
-Inbound: TCP 22 (from Bastion SG ID)
-Inbound: TCP 80/443 (All)"]
+
+            subgraph PrivateSubnet["Private Subnet"]
+                AppEC2["App EC2\n(Docker: Client + Server + DB)\n+ Host Nginx"]
+                JenkinsEC2["Jenkins EC2\n(CI/CD — Port 8080)"]
+                SonarEC2["SonarQube EC2\n(Code Quality — Port 9000)"]
+                ObsEC2["Observability EC2\n(Prometheus + Grafana)"]
             end
+
         end
-        
-        subgraph Backend ["Remote State Backend"]
-            S3["AWS S3 Bucket
-(cloud-devops-tf-state-2026)"]
-            DDB["AWS DynamoDB
-(terraform-state-locks)"]
+
+        subgraph Backend["Terraform Remote State"]
+            S3["S3 Bucket\n(terraform.tfstate)"]
+            DDB["DynamoDB\n(State Lock)"]
         end
+
+        DockerHub["🐳 DockerHub\n(Image Registry)"]
+        GitHub["🐙 GitHub\n(Source Control)"]
     end
 
-    Dev -->|SSH Port 22| Bastion
-    Bastion -->|SSH ProxyCommand Tunnel| AppServer
-    Dev -->|Terraform State Locking| DDB
-    Dev -->|Terraform State Storage| S3
-    AppServer -->|Outbound Updates/Docker Pulls| NAT
-    NAT --> IGW
-    IGW -->|Internet Access| Internet
-    BastionSG -.->|SG Chaining Rule| AppSG
+    User -->|HTTP| ALB
+    ALB -->|Port 80| AppEC2
+    Admin -->|SSH Port 22| Bastion
+    Bastion -->|ProxyJump SSH| AppEC2
+    Bastion -->|ProxyJump SSH| JenkinsEC2
+    Bastion -->|ProxyJump SSH| SonarEC2
+    Bastion -->|ProxyJump SSH| ObsEC2
+    AppEC2 -->|Outbound| NAT --> Internet
+    JenkinsEC2 -->|Pull images| DockerHub
+    JenkinsEC2 -->|Scan code| SonarEC2
+    GitHub -->|Webhook / Poll| JenkinsEC2
 ```
+
+### EC2 Instances
+
+| Server | Subnet | Role |
+|---|---|---|
+| Bastion Host | Public | SSH jump server into private subnet |
+| App EC2 | Private | Runs Docker containers + host Nginx reverse proxy |
+| Jenkins EC2 | Private | CI/CD server (Jenkins, native install) |
+| SonarQube EC2 | Private | Static code analysis (native install) |
+| Observability EC2 | Private | Prometheus + Grafana monitoring (native install) |
+
+> All tooling servers (Jenkins, SonarQube, Observability) are accessed via **SSH port forwarding** tunnelled through the Bastion — they are never exposed to the public internet.
 
 ---
 
-### 2. Remote State & Locking Mechanism (S3 + DynamoDB)
-Terraform uses an AWS S3 bucket for central state storage and DynamoDB for state locking to prevent race conditions during concurrent deployments.
+## 2. Technology Stack
+
+| Category | Tool | Purpose |
+|---|---|---|
+| **Cloud** | AWS (VPC, EC2, ALB, S3, IAM, NAT GW) | Infrastructure provider |
+| **IaC** | Terraform + S3 backend | Provision and version-control all AWS resources |
+| **Configuration** | Ansible + Ansible Vault | Install and configure all servers |
+| **CI/CD** | Jenkins | Automate build, test, and deploy pipeline |
+| **Code Quality** | SonarQube + sonar-scanner | Static analysis and quality gate |
+| **Containerisation** | Docker + Docker Compose | Run app containers on App EC2 |
+| **Image Registry** | DockerHub | Store and distribute app Docker images |
+| **Reverse Proxy** | Nginx (host-level) | Route ALB traffic into client container |
+| **Frontend** | React + Vite | Student expenses tracker UI |
+| **Backend** | Node.js + Express | REST API for expenses data |
+| **Database** | PostgreSQL 16 | Persistent relational data storage |
+| **Monitoring** | Prometheus + Grafana | Metrics collection and dashboards |
+
+---
+
+## 3. Traffic Flow
+
+### Public User Request
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor Dev as Developer / CI Runner
-    participant TF as Terraform Engine
-    participant DDB as AWS DynamoDB (Lock Table)
-    participant S3 as AWS S3 Bucket (terraform.tfstate)
+    actor User as 👤 End User (Browser)
+    participant ALB as Application Load Balancer
+    participant Nginx as Host Nginx (App EC2 :80)
+    participant Client as Client Container (React :3001)
+    participant Server as Server Container (Node.js :3000)
+    participant DB as DB Container (PostgreSQL :5432)
 
-    Dev->>TF: Run 'terraform apply'
-    
-    rect rgb(230, 240, 255)
-        note over TF,DDB: State Locking Check
-        TF->>DDB: Query LockID
-        alt LockID Available
-            DDB-->>TF: Lock Acquired (LockID Registered)
-        else LockID Active
-            DDB-->>TF: Resource Busy Error
-            TF-->>Dev: Abort Execution (State Locked)
-        end
-    end
+    User->>ALB: HTTP GET /
+    ALB->>Nginx: Forward to App EC2 port 80
+    Nginx->>Client: Proxy to localhost:3001
+    Client-->>User: Serve React SPA (HTML/JS/CSS)
 
-    rect rgb(235, 255, 235)
-        note over TF,S3: State Sync & Execution
-        TF->>S3: Read 'terraform.tfstate'
-        S3-->>TF: Return Current Infrastructure State
-        TF->>TF: Calculate Delta & Apply AWS API Changes
-        TF->>S3: Write Updated 'terraform.tfstate'
-    end
-
-    rect rgb(255, 235, 235)
-        note over TF,DDB: Release Lock
-        TF->>DDB: Delete LockID Item
-        TF-->>Dev: Execution Completed Successfully
-    end
+    User->>ALB: HTTP GET /expenses (API call from browser)
+    ALB->>Nginx: Forward to App EC2 port 80
+    Nginx->>Client: Proxy to localhost:3001
+    Client->>Server: Proxy /expenses to server:3000
+    Server->>DB: SQL Query
+    DB-->>Server: Result rows
+    Server-->>Client: JSON response
+    Client-->>User: Render expenses data
 ```
 
 ---
 
-### 3. Ansible SSH ProxyCommand Tunneling Flow
-Ansible uses SSH ProxyCommand settings in `ansible.cfg` to automatically tunnel through the public Bastion host to manage the private Application host.
+## 4. CI/CD Pipeline
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Local as Control Node (Local Ansible)
-    participant Bastion as Bastion Host (Public Subnet: 44.193.198.228)
-    participant App as App Host (Private Subnet: 10.0.2.78)
+Every push to the `dev` branch triggers a full automated pipeline in Jenkins:
 
-    Local->>Bastion: Establish SSH Tunnel (Port 22) using local key (.pem)
-    note over Local,Bastion: Authenticates using local SSH Private Key
-    Bastion->>App: Forward SSH Traffic (-W %h:%p) across VPC internal network
-    note over Bastion,App: Governed by Security Group Chaining (app_sg accepts bastion_sg)
-    Local->>App: Execute Ansible Tasks (Sudo User / UFW / Docker Setup)
-    App-->>Local: Task Execution Status (ok / changed / failed)
-```
-
----
-
-### 4. Git Branching & Protection Workflow
 ```mermaid
 flowchart LR
-    subgraph LocalWorkspace ["Developer Local Workspace"]
-        DevBranch["dev branch
-(Active Feature Work)"]
+    Push["git push\norigin dev"] --> Checkout
+
+    subgraph JenkinsPipeline["Jenkins Pipeline"]
+        Checkout["1️⃣ Checkout\nPull source from GitHub"]
+        Install["2️⃣ Install Dependencies\nnpm install"]
+        Test["3️⃣ Run Tests\nnpm test"]
+        Sonar["4️⃣ SonarQube Analysis\nsonar-scanner"]
+        Gate["5️⃣ Quality Gate\nwaitForQualityGate"]
+        Build["6️⃣ Build Docker Images\ndocker build client + server"]
+        DockerPush["7️⃣ Push to DockerHub\n:BUILD_NUMBER + :latest"]
+        Deploy["8️⃣ Deploy to App EC2\nansible-playbook deploy-app.yml"]
     end
 
-    subgraph GitHubRepo ["GitHub Remote Repository"]
-        PR["Pull Request (PR)
-(Req: 1 Approval + Status Checks)"]
-        MainBranch["main branch
-(Production-Ready / Protected)"]
-        DirectPush["Direct Push Attempt"]
-    end
+    Checkout --> Install --> Test --> Sonar --> Gate --> Build --> DockerPush --> Deploy
 
-    DevBranch -->|git push origin dev| GitHubRepo
-    DevBranch -.->|git push origin main| DirectPush
-    DirectPush -- X Blocked by Policy --> MainBranch
-    GitHubRepo -->|Open PR| PR
-    PR -->|Review & Approve| MainBranch
+    Gate -->|"❌ Quality\ngate failed"| Fail["Build Aborted"]
+    Deploy -->|"✅ Success"| Live["App Updated Live"]
+
+    Sonar -.->|"Sends scan results"| SQ["SonarQube EC2\n:9000"]
+    DockerPush -.->|"Pushes images"| DH["DockerHub"]
+    Deploy -.->|"Pulls images &\nrestarts containers"| AppEC2["App EC2"]
+```
+
+### Terraform State Locking
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer / Jenkins
+    participant TF as Terraform
+    participant DDB as DynamoDB (Lock Table)
+    participant S3 as S3 (terraform.tfstate)
+
+    Dev->>TF: terraform apply
+    TF->>DDB: Acquire lock (LockID)
+    alt Lock available
+        DDB-->>TF: Lock granted
+        TF->>S3: Read current state
+        S3-->>TF: Return state
+        TF->>TF: Plan + Apply changes
+        TF->>S3: Write updated state
+        TF->>DDB: Release lock
+        TF-->>Dev: Apply complete
+    else Lock held by another process
+        DDB-->>TF: Lock busy
+        TF-->>Dev: Error: state locked
+    end
 ```
 
 ---
 
-## Directory Structure
+## 5. Monitoring Architecture
 
-```text
-.
-├── .github/
-│   └── ISSUE_TEMPLATE/
-│       ├── bug_report.md
-│       ├── feature_request.md
-│       └── task.md
-├── ansible/
-│   ├── ansible.cfg
-│   ├── group_vars/
-│   │   └── all/
-│   │       ├── main.yml
-│   │       └── vault.yml
-│   ├── inventory/
-│   │   ├── hosts.ini
-│   │   └── tf_outputs.json
-│   └── playbooks/
-│       ├── 01_security.yml
-│       ├── 02_docker.yml
-│       └── site.yml
-├── terraform/
-│   ├── backend.tf
-│   ├── ec2.tf
-│   ├── gateways.tf
-│   ├── outputs.tf
-│   ├── provider.tf
-│   ├── route_tables.tf
-│   ├── security_groups.tf
-│   ├── subnets.tf
-│   ├── variables.tf
-│   └── vpc.tf
+```mermaid
+flowchart LR
+    subgraph Targets["Monitored Hosts (Node Exporter :9100)"]
+        AppNE["App EC2"]
+        JenkinsNE["Jenkins EC2"]
+        SonarNE["SonarQube EC2"]
+        ObsNE["Observability EC2 (self)"]
+    end
+
+    subgraph ObsStack["Observability EC2"]
+        Prom["Prometheus\n(Scrapes :9100 every 15s)"]
+        Grafana["Grafana\n(Dashboards — :3000)"]
+        Alert["Alertmanager\n(Alert routing)"]
+    end
+
+    AppNE -->|metrics| Prom
+    JenkinsNE -->|metrics| Prom
+    SonarNE -->|metrics| Prom
+    ObsNE -->|metrics| Prom
+
+    Prom -->|data source| Grafana
+    Prom -->|alert rules| Alert
+```
+
+---
+
+## 6. Project Structure
+
+```
+Cloud-DevOps-Lab-26/
+├── Jenkinsfile                         # 8-stage CI/CD pipeline definition
+├── sonar-project.properties            # SonarQube scanner configuration
 ├── .gitignore
-└── README.md
+│
+├── app/                                # Application source code
+│   ├── client/                         # React + Vite frontend
+│   │   ├── Dockerfile                  # Multi-stage: Node build → Nginx serve
+│   │   ├── nginx.conf                  # In-container Nginx config
+│   │   └── src/                        # React components, pages, hooks
+│   ├── server/                         # Node.js + Express backend
+│   │   ├── Dockerfile                  # Production Node.js image
+│   │   ├── server.js                   # App entry point
+│   │   ├── src/                        # Routes, controllers, models, config
+│   │   └── db/init.sql                 # PostgreSQL schema initialisation
+│   └── package.json                    # Root workspace convenience scripts
+│
+├── docker/
+│   └── app/
+│       └── docker-compose.yml          # Production compose: db + server + client
+│
+├── ansible/
+│   ├── inventory/
+│   │   └── hosts.ini                   # Host IPs + Bastion ProxyJump config
+│   ├── group_vars/all/
+│   │   ├── main.yml                    # Shared variables (ports, usernames)
+│   │   └── vault.yml                   # AES-256 encrypted secrets
+│   ├── templates/
+│   │   ├── app-nginx.conf.j2           # Host Nginx reverse proxy config
+│   │   ├── app.env.j2                  # Runtime .env for docker-compose
+│   │   └── prometheus.yml.j2           # Prometheus scrape targets
+│   └── playbooks/
+│       ├── site.yml                    # Master: security hardening on all nodes
+│       ├── deploy-app.yml              # Deploy containers + Nginx on App EC2
+│       ├── deploy-jenkins.yml          # Jenkins + Docker + Ansible + sonar-scanner
+│       ├── deploy-sonarqube.yml        # SonarQube + PostgreSQL backend
+│       ├── deploy-observability.yml    # Prometheus + Grafana + Alertmanager
+│       ├── security.yml                # UFW firewall + SSH hardening
+│       └── docker.yml                  # Docker CE install for App EC2
+│
+└── terraform/
+    ├── main.tf                         # Provider config + S3 backend
+    ├── variables.tf                    # Variable declarations
+    ├── terraform.tfvars                # Local variable values (not committed)
+    ├── vpc.tf                          # VPC, subnets, IGW, NAT, route tables
+    ├── sg.tf                           # Security groups for all servers
+    ├── bastion.tf                      # Bastion host EC2
+    ├── app_ec2.tf                      # App server EC2
+    ├── tools_ec2.tf                    # Jenkins, SonarQube, Observability EC2s
+    ├── alb.tf                          # ALB + target group + listener
+    └── outputs.tf                      # Exported IPs and DNS names
 ```
 
 ---
 
-## Phase-by-Phase Implementation Breakdown
+## 7. Prerequisites
 
-### Phase 1: Git & Project Setup
-1. **Repository Setup**: Initialized public repository `cloud-devops-lab-26` with `main` and `dev` branches.
-2. **Branch Protection**: Enabled protection rules on `main` requiring Pull Request (PR) reviews (1 approval minimum), enforcing status checks, blocking force pushes (`git push --force`), and preventing branch deletions.
-3. **Issue Templates & Kanban Board**: Created structured issue templates inside `.github/ISSUE_TEMPLATE/` (`bug_report.md`, `feature_request.md`, `task.md`) linked directly to a GitHub Projects Kanban board (`Todo`, `In Progress`, `Done`).
-4. **Git Ignore Hierarchy**: Established a root `.gitignore` file to ensure temporary caches, credentials, SSH `.pem` keys, and Terraform state files are never committed.
+Install the following on your **local machine**:
 
----
+```bash
+# Terraform (v1.5+)
+sudo apt install terraform
 
-### Phase 2: Infrastructure as Code (Terraform)
-1. **Remote Backend Bootstrap**: Configured an AWS S3 bucket (`cloud-devops-tf-state-2026`) with bucket versioning and SSE-S3 encryption enabled, alongside an AWS DynamoDB table (`terraform-state-locks`) with primary partition key `LockID` (String).
-2. **Network Layer Provisioning**:
-   - `vpc.tf`: Defined core VPC (`10.0.0.0/16`) with DNS hostnames and resolution enabled.
-   - `subnets.tf`: Provisioned Public Subnet (`10.0.1.0/24`) and Private Subnet (`10.0.2.0/24`).
-   - `gateways.tf`: Deployed an Internet Gateway (IGW) attached to the VPC and an Elastic IP-backed NAT Gateway in the public subnet.
-   - `route_tables.tf`: Created public route table (`0.0.0.0/0 -> IGW`) and private route table (`0.0.0.0/0 -> NAT Gateway`).
-3. **Security Groups & Compute Layer**:
-   - `security_groups.tf`: Implemented Security Group Chaining—`bastion_sg` permits SSH (Port 22) from authorized IPs, while `app_sg` permits SSH exclusively from `bastion_sg.id`.
-   - `ec2.tf`: Deployed `t3.micro` Bastion host (public subnet) and `t3.small` App Server (private subnet, with explicit `depends_on = [aws_nat_gateway.nat]`).
-4. **Outputs Handoff**:
-   - Exported dynamic infrastructure IP attributes via `outputs.tf` and saved formatted JSON to `ansible/inventory/tf_outputs.json`:
-     ```bash
-     mkdir -p ../ansible/inventory
-     terraform output -json > ../ansible/inventory/tf_outputs.json
-     ```
+# AWS CLI
+sudo apt install awscli
+aws configure
+# Enter: Access Key ID, Secret Access Key, Region (us-east-1), Output (json)
 
----
+# Ansible (v2.14+) and required collections
+sudo apt install ansible
+ansible-galaxy collection install community.docker
+ansible-galaxy collection install community.general
+ansible-galaxy collection install ansible.posix
 
-### Phase 3: Configuration Management & Security (Ansible)
-1. **SSH Tunneling Configuration (`ansible.cfg`)**:
-   Configured Ansible with `ProxyCommand` to automatically tunnel SSH requests through the public Bastion host to manage the private 10.0.2.x IP host seamlessly.
-2. **Inventory Mapping (`inventory/hosts.ini`)**:
-   Categorized target hosts into `[bastion_nodes]` and `[app_nodes]` groups mapping dynamic AWS public and private IPs.
-3. **Vault Encryption (`group_vars/all/vault.yml`)**:
-   Encrypted sensitive variables (sudo user credentials, Docker Hub access tokens) using AES-256 via Ansible Vault:
-   ```bash
-   ansible-vault encrypt group_vars/all/vault.yml
-   ```
-4. **OS Security Hardening Playbook (`playbooks/01_security.yml`)**:
-   - Updated system APT package cache and upgraded packages.
-   - Installed essential administrative utilities (`curl`, `git`, `htop`, `ufw`, `fail2ban`, `python3-pip`).
-   - Created administrative `devops` user with passwordless sudo access (`/etc/sudoers.d/devops`).
-   - Applied UFW firewall rules (Allow TCP 22, 80, 443; default deny inbound).
-   - Hardened SSH configuration (`PermitRootLogin no`) and restarted SSH daemon.
-5. **Runtime & Docker Installation Playbook (`playbooks/02_docker.yml`)**:
-   - Downloaded Docker official GPG key and de-armored it to binary format `/etc/apt/keyrings/docker.gpg`.
-   - Configured `deb822_repository` APT source for Docker.
-   - Updated APT cache and installed `docker-ce`, `docker-ce-cli`, `containerd.io`, and `docker-compose-plugin`.
-   - Added `ubuntu` and `devops` users to the `docker` Linux system group.
-   - Pulled test Docker images (`hello-world`, `ubuntu`) and initiated test containers.
-6. **Master Orchestration Playbook (`playbooks/site.yml`)**:
-   Orchestrated the execution sequence of `01_security.yml` followed by `02_docker.yml`.
+# Docker (for building images locally before pipeline takes over)
+# Install Docker Engine or Docker Desktop
+
+# SSH keypair — download from AWS and place at:
+chmod 400 ~/.ssh/<your-keypair>.pem
+```
 
 ---
 
-## Verification & Validation Commands
+## 8. Phase 1 — Infrastructure with Terraform
 
-Run these commands to verify that the environment and automation layers are fully operational:
+```bash
+cd terraform/
 
-1. **Verify Infrastructure State & Remote Lock**:
-   ```bash
-   cd terraform/
-   terraform plan
-   ```
-2. **Verify SSH Tunneling through Bastion to Private App Host**:
-   ```bash
-   ssh -J ubuntu@Public_IP_Bastion_Host ubuntu@Private_IP_App_Server
-   ```
-3. **Verify Ansible Connectivity across All Nodes**:
-   ```bash
-   cd ansible/
-   ansible all -m ping --ask-vault-pass
-   ```
-4. **Verify Administrative `devops` User & Sudo Privileges**:
-   ```bash
-   ssh -J ubuntu@Public_IP_Bastion_Host devops@Private_IP_App_Server "sudo ufw status verbose"
-   ```
-5. **Verify Docker & Docker Compose Plugin on Private App Host**:
-   ```bash
-   ansible app_nodes -m shell -a "docker --version && docker compose version && docker ps"
-   ```
+# 1. Get your current public IP (used in bastion security group rule)
+curl ifconfig.me
 
-#Testing
+# 2. Set your values in terraform.tfvars
+#    my_ip            = "<YOUR_IP>/32"
+#    public_key_path  = "~/.ssh/<your-keypair>.pub"
+#    environment      = "dev"
+
+# 3. Initialise Terraform — downloads providers, connects to S3 backend
+terraform init
+
+# 4. Preview all resources that will be created
+terraform plan
+
+# 5. Provision infrastructure (~3–5 minutes)
+terraform apply -auto-approve
+
+# 6. Save the outputs — you'll need these IPs for Ansible and SSH config
+terraform output
+```
+
+**You will receive these output values:**
+
+| Output | Description |
+|---|---|
+| `alb_dns_name` | Public URL to access the application |
+| `bastion_public_ip` | Bastion host public IP for SSH config |
+| `app_private_ip` | App EC2 private IP |
+| `jenkins_private_ip` | Jenkins EC2 private IP |
+| `sonarqube_private_ip` | SonarQube EC2 private IP |
+| `observability_private_ip` | Observability EC2 private IP |
+
+---
+
+## 9. Phase 2 — SSH Access via Bastion
+
+Add all servers to `~/.ssh/config`, replacing placeholders with your Terraform outputs:
+
+```
+Host bastion
+    HostName <BASTION_PUBLIC_IP>
+    User ubuntu
+    IdentityFile ~/.ssh/<your-keypair>.pem
+
+Host app-server
+    HostName <APP_PRIVATE_IP>
+    User ubuntu
+    IdentityFile ~/.ssh/<your-keypair>.pem
+    ProxyJump bastion
+
+Host jenkins
+    HostName <JENKINS_PRIVATE_IP>
+    User ubuntu
+    IdentityFile ~/.ssh/<your-keypair>.pem
+    ProxyJump bastion
+
+Host sonarqube
+    HostName <SONARQUBE_PRIVATE_IP>
+    User ubuntu
+    IdentityFile ~/.ssh/<your-keypair>.pem
+    ProxyJump bastion
+
+Host observability
+    HostName <OBSERVABILITY_PRIVATE_IP>
+    User ubuntu
+    IdentityFile ~/.ssh/<your-keypair>.pem
+    ProxyJump bastion
+```
+
+**Test all connections:**
+```bash
+ssh bastion       "echo bastion OK"
+ssh app-server    "echo app OK"
+ssh jenkins       "echo jenkins OK"
+ssh sonarqube     "echo sonarqube OK"
+ssh observability "echo observability OK"
+```
+
+Also update `ansible/inventory/hosts.ini` with the same private IPs.
+
+---
+
+## 10. Phase 3 — Server Configuration with Ansible
+
+### 10a. Create Ansible Vault (encrypted secrets)
+
+```bash
+cd ansible/
+
+# Create the encrypted vault file — you will be prompted for a password
+ansible-vault create group_vars/all/vault.yml
+```
+
+The vault must define these variables:
+```yaml
+vault_db_user: "your_postgres_user"
+vault_db_password: "your_secure_password"
+vault_devops_password: "hashed_linux_user_password"
+vault_docker_hub_username: "your_dockerhub_username"
+```
+
+To edit later: `ansible-vault edit group_vars/all/vault.yml`
+
+### 10b. Security harden all servers
+
+```bash
+ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-vault-pass
+```
+
+Applies UFW firewall rules, SSH hardening, and creates an admin `devops` user on every EC2.
+
+### 10c. Install Jenkins
+
+```bash
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-jenkins.yml
+```
+
+Installs: OpenJDK 21, Jenkins, Docker CE, Docker Compose plugin, Ansible, sonar-scanner CLI, Prometheus Node Exporter.
+
+### 10d. Install SonarQube
+
+```bash
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-sonarqube.yml --ask-vault-pass
+```
+
+Installs: PostgreSQL (SonarQube backend), SonarQube Community Edition, Prometheus Node Exporter.
+
+> **Note for small instances:** The playbook automatically creates a **2 GB swap file** before starting SonarQube. This prevents out-of-memory crashes on `t2.micro` / `t3.micro` instances (which only have 1 GB RAM, while SonarQube requires 2 GB).
+
+### 10e. Install Observability Stack
+
+```bash
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-observability.yml --ask-vault-pass
+```
+
+Installs: Prometheus, Grafana, Alertmanager. Prometheus is configured to scrape Node Exporter on all other EC2s.
+
+---
+
+## 11. Phase 4 — Configure Jenkins
+
+**Open an SSH tunnel** (keep this terminal open):
+```bash
+ssh -N -L 8080:<JENKINS_PRIVATE_IP>:8080 bastion
+```
+Open: **http://localhost:8080**
+
+**Get the initial admin password:**
+```bash
+ssh jenkins "sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+```
+
+**Install suggested plugins**, then also install:
+
+| Plugin | Purpose |
+|---|---|
+| SonarQube Scanner | SonarQube integration |
+| Docker Pipeline | Docker commands in Jenkinsfile |
+| SSH Agent | SSH key injection for Ansible |
+
+**Add SonarQube server** → Manage Jenkins → System → SonarQube servers:
+- Name: `SonarQube` ← must match the `Jenkinsfile` exactly
+- URL: `http://<SONARQUBE_PRIVATE_IP>:9000`
+- Token: add a Secret Text credential with ID `Jenkins-Token` (generated in Phase 5)
+
+**Add credentials** → Manage Jenkins → Credentials → Global:
+
+| Credential ID | Kind | Value |
+|---|---|---|
+| `dockerhub-credentials` | Username with password | DockerHub username + Personal Access Token (Read & Write) |
+| `ansible-vault-password` | Secret file | A `.txt` file containing only your vault password |
+| `ssh-private-key` | SSH Username with private key | Username: `ubuntu` + your `.pem` key content |
+| `Jenkins-Token` | Secret text | SonarQube analysis token (generated in Phase 5) |
+
+**Create the pipeline job** → New Item → Pipeline → `expenses-tracker`:
+- Definition: Pipeline script from SCM
+- SCM: Git
+- Repository URL: `https://github.com/<your-username>/<your-repo>.git`
+- Branch: `*/dev`
+- Script Path: `Jenkinsfile`
+
+---
+
+## 12. Phase 5 — Configure SonarQube
+
+**Open an SSH tunnel** (keep this terminal open):
+```bash
+ssh -N -L 9000:<SONARQUBE_PRIVATE_IP>:9000 bastion
+```
+Open: **http://localhost:9000**
+
+**Initial setup:**
+1. Login: `admin` / `admin` — change the password when prompted
+2. My Account (top right) → **Security** → Generate Token
+   - Name: `jenkins-token`
+   - Type: **Global Analysis Token**
+   - Click **Generate** — copy it immediately (shown once only)
+3. Add the copied token to Jenkins as a Secret Text credential with ID `Jenkins-Token`
+
+**Create the project:**
+- Projects → Create Project → Manually
+- Project key: `cloud-devops-lab-26` ← must match `sonar-project.properties`
+- Display name: `Cloud DevOps Lab 26`
+
+---
+
+## 13. Phase 6 — First Deployment
+
+> Run this once to get your images on DockerHub. After this, Jenkins handles every deployment automatically.
+
+**Build and push images locally:**
+```bash
+# Login using a PAT with Read & Write scope
+docker login -u <your-dockerhub-username>
+
+# Build
+docker build -t <your-dockerhub-username>/expenses-client:latest ./app/client/
+docker build -t <your-dockerhub-username>/expenses-server:latest ./app/server/
+
+# Push
+docker push <your-dockerhub-username>/expenses-client:latest
+docker push <your-dockerhub-username>/expenses-server:latest
+```
+
+**Deploy to the App EC2:**
+```bash
+cd ansible/
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-app.yml --ask-vault-pass
+```
+
+This playbook:
+1. Creates `/opt/expenses-tracker/` on the App EC2
+2. Copies `docker-compose.yml`, `init.sql`, and generates `.env` from vault secrets
+3. Adds `ubuntu` to the `docker` group
+4. Pulls images and starts all 3 containers via `docker compose up`
+5. Installs and configures host Nginx as a reverse proxy on port 80
+6. Installs Prometheus Node Exporter
+
+**Verify the deployment:**
+```bash
+# All 3 containers should show as "Up"
+ssh app-server "sudo docker ps"
+
+# Host Nginx health check
+ssh app-server "curl -s http://localhost/health"
+
+# API health check
+ssh app-server "curl -s http://localhost:3000/"
+```
+
+**Access the application:**
+```
+http://<ALB_DNS_NAME>
+```
+
+---
+
+## 14. Phase 7 — Full CI/CD Pipeline
+
+Every future deployment is triggered automatically by a git push:
+
+```bash
+git add .
+git commit -m "Your feature description"
+git push origin dev
+```
+
+Then in Jenkins → `expenses-tracker` → **Build Now** (or set up a webhook for automatic triggering).
+
+### Pipeline Stage Summary
+
+| # | Stage | Action |
+|---|---|---|
+| 1 | Checkout | Pull latest commit from GitHub |
+| 2 | Install Dependencies | `npm install` in workspace |
+| 3 | Run Tests | `npm test --passWithNoTests` |
+| 4 | SonarQube Analysis | `sonar-scanner` → results sent to SonarQube EC2 |
+| 5 | Quality Gate | Wait up to 5 min — abort if quality gate fails |
+| 6 | Build Docker Images | `docker build` for client and server |
+| 7 | Push to DockerHub | Push `:BUILD_NUMBER` tag and `:latest` |
+| 8 | Deploy to App EC2 | `ansible-playbook deploy-app.yml` with `image_tag=BUILD_NUMBER` |
+
+---
+
+## 15. Accessing Services
+
+All internal services are accessed via SSH port forwarding through the Bastion host.
+
+**Start all tunnels in one command** (keep this terminal open while working):
+
+```bash
+ssh -N \
+  -L 8080:<JENKINS_PRIVATE_IP>:8080 \
+  -L 9000:<SONARQUBE_PRIVATE_IP>:9000 \
+  -L 3000:<OBSERVABILITY_PRIVATE_IP>:3000 \
+  bastion
+```
+
+| Service | Local URL | Notes |
+|---|---|---|
+| Jenkins | http://localhost:8080 | CI/CD pipelines |
+| SonarQube | http://localhost:9000 | Code quality reports |
+| Grafana | http://localhost:3000 | Monitoring dashboards |
+| Application | `http://<ALB_DNS_NAME>` | Publicly accessible |
+
+> The `-N` flag keeps the tunnel open without running any command. The terminal will appear to hang — that is correct. Open new tabs for other work.
+
+---
+
+## 16. Secrets Management
+
+### What is stored where
+
+| Secret | Where stored | How protected |
+|---|---|---|
+| DB username & password | Ansible Vault (`vault.yml`) | AES-256 encrypted |
+| DockerHub username | Ansible Vault (`vault.yml`) | AES-256 encrypted |
+| Linux user password | Ansible Vault (`vault.yml`) | AES-256 encrypted |
+| SonarQube token | Jenkins Credentials | Jenkins internal store |
+| DockerHub PAT | Jenkins Credentials | Jenkins internal store |
+| EC2 SSH private key | Jenkins Credentials | Jenkins internal store |
+| Ansible vault password | Jenkins Credentials (secret file) | Jenkins internal store |
+| App runtime `.env` | Auto-generated on App EC2 by Ansible | Never committed to Git |
+
+### What is never committed to Git
+
+- `.env` files
+- `*.pem` / `*.key` SSH private keys
+- `terraform.tfstate` (stored in S3 instead)
+- Vault password files
+- Real IP addresses in configuration (use variables/outputs)
+
+All of these are covered by `.gitignore` at the project root.
+
