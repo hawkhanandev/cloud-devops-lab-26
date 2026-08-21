@@ -66,13 +66,13 @@ pipeline {
                     if [ -f "$WORKSPACE/app/server/package.json" ]; then
                         echo "Testing server..."
                         cd "$WORKSPACE/app/server"
-                        npm test -- --passWithNoTests
+                        npm test --if-present
                     fi
 
                     if [ -f "$WORKSPACE/app/client/package.json" ]; then
                         echo "Testing client..."
                         cd "$WORKSPACE/app/client"
-                        npm test -- --passWithNoTests
+                        npm test --if-present
                     fi
                 '''
             }
